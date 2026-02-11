@@ -4,16 +4,27 @@ import datetime
 DB_NAME = "plates.db"
 
 def init_db():
+    """
+    Erstellt die Datenbanktabellen, falls sie noch nicht existieren.
+    - plates: Speichert die zugelassenen Kennzeichen.
+    - logs: Speichert die Zugriffsversuche.
+    """
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
+    # Tabelle für zugelassene Kennzeichen
     c.execute('''CREATE TABLE IF NOT EXISTS plates
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, plate_number TEXT UNIQUE, created_at TIMESTAMP)''')
+    # Tabelle für Zugriffsprotokolle
     c.execute('''CREATE TABLE IF NOT EXISTS logs
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, plate_number TEXT, access_granted BOOLEAN, timestamp TIMESTAMP)''')
     conn.commit()
     conn.close()
 
 def add_plate(plate_number):
+    """
+    Fügt ein neues Kennzeichen zur Datenbank hinzu.
+    Gibt True zurück, wenn erfolgreich, False, wenn das Kennzeichen schon existiert.
+    """
     try:
         conn = sqlite3.connect(DB_NAME)
         c = conn.cursor()
@@ -25,6 +36,7 @@ def add_plate(plate_number):
         return False
 
 def remove_plate(plate_id):
+    """Löscht ein Kennzeichen anhand der ID aus der Datenbank."""
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("DELETE FROM plates WHERE id=?", (plate_id,))
@@ -32,8 +44,9 @@ def remove_plate(plate_id):
     conn.close()
 
 def get_all_plates():
+    """Holt alle gespeicherten Kennzeichen, sortiert nach Erstellungsdatum (neueste zuerst)."""
     conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = sqlite3.Row # Dictionary-ähnlicher Zugriff auf Zeilen
     c = conn.cursor()
     c.execute("SELECT * FROM plates ORDER BY created_at DESC")
     rows = c.fetchall()
@@ -41,6 +54,11 @@ def get_all_plates():
     return rows
 
 def log_access(plate_number, granted):
+    """
+    Protokolliert einen Zugriffsversuch.
+    - plate_number: Das erkannte Kennzeichen
+    - granted: Boolean, ob Zugriff gewährt wurde (True) oder nicht (False)
+    """
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("INSERT INTO logs (plate_number, access_granted, timestamp) VALUES (?, ?, ?)", 
@@ -49,6 +67,7 @@ def log_access(plate_number, granted):
     conn.close()
 
 def get_recent_logs(limit=10):
+    """Holt die letzten 'limit' Log-Einträge."""
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
@@ -58,6 +77,10 @@ def get_recent_logs(limit=10):
     return rows
 
 def check_plate(plate_number):
+    """
+    Prüft, ob ein Kennzeichen in der Datenbank ('plates' Tabelle) vorhanden ist.
+    Gibt True zurück, wenn ja (Zugriff erlaubt), sonst False.
+    """
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute("SELECT * FROM plates WHERE plate_number=?", (plate_number,))
