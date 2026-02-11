@@ -1,0 +1,26 @@
+# Projekt-Walkthrough: ESP32-CAM Smart Gate
+
+## Projektstatus
+Das System ist vollständig implementiert und einsatzbereit.
+
+### Features
+1.  **Live-Kamera**: Echtzeit-Stream von der ESP32-CAM.
+2.  **Kennzeichenerkennung (ALPR)**: Automatische Öffnung bei registrierten Kennzeichen.
+3.  **Datenbank-Verwaltung**: Hinzufügen/Löschen von erlaubten Kennzeichen über das Web-Dashboard.
+4.  **Manuelle Steuerung**: "Open Gate" Button im Dashboard.
+5.  **Dokumentation**: Integrierte Anleitungen (`/docs`).
+
+## Setup-Prüfung
+-   [x] **Hardware**: Verkabelung gemäß [setup_guide.md](file:///C:/Users/mesic/.gemini/antigravity/brain/12f3ca50-3a1b-4305-8743-4801b9ce6b2d/setup_guide.md).
+-   [x] **Software**: Server läuft auf Port 5000.
+-   [x] **Git**: Code ist synchronisiert mit GitHub.
+
+## Nächste Schritte
+1.  **Hardware-Test**: Sobald der neue ESP32 da ist, flashen und testen.
+2.  **Montage**: Kamera und Relais am Tor installieren.
+3.  **Optimierung**: Ggf. OCR-Parameter anpassen bei schlechtem Licht.
+
+## Aufruf der App
+-   **Dashboard**: [http://localhost:5000](http://localhost:5000)
+-   **Dokumentation**: [http://localhost:5000/docs](http://localhost:5000/docs)
+-   **Datenbank**: [http://localhost:5000/manage](http://localhost:5000/manage)

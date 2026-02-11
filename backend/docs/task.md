@@ -1,0 +1,23 @@
+# Projekt-Aufgaben: ESP32-CAM Kennzeichenerkennung
+
+- [x] Projekt-Setup & Planung
+    - [x] Implementierungsplan erstellen <!-- id: 0 -->
+    - [x] Technologiewahl bestätigen (Python Backend vs. ESP32 Only) <!-- id: 1 -->
+- [/] ESP32-Firmware Entwicklung
+    - [x] Kamera-Webserver einrichten <!-- id: 2 -->
+    - [x] Relais-Steuerung implementieren <!-- id: 3 -->
+    - [ ] WLAN-Verbindungstest <!-- id: 4 -->
+- [/] Python Backend (Flask)
+    - [x] Projektstruktur erstellen <!-- id: 5 -->
+    - [x] Videostream-Verarbeitung (OpenCV) <!-- id: 6 -->
+    - [x] OCR-Integration (EasyOCR) <!-- id: 7 -->
+    - [x] Datenbank-Setup (SQLite) <!-- id: 8 -->
+    - [x] API-Endpunkte (Stream, Toggle Gate, Add Plate) <!-- id: 9 -->
+- [x] Web-Frontend (Dashboard)
+    - [x] Live-View Komponente <!-- id: 10 -->
+    - [x] Kennzeichen-Verwaltung (CRUD) <!-- id: 11 -->
+    - [x] Styling & UI (Modern/Premium) <!-- id: 12 -->
+- [/] Integration & Test
+    - [ ] Gesamtsystem-Test <!-- id: 13 -->
+    - [x] Dokumentation (Walkthrough) <!-- id: 14 -->
+    - [x] Git-Repository initialisieren <!-- id: 15 -->
