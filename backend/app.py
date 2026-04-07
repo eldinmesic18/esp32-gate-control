@@ -1,126 +1,130 @@
-from flask import Flask, render_template, Response, request, jsonify, redirect, url_for
+from flask import Flask, render_template, Response, request, jsonify
+from flask_sock import Sock
 import cv2
 import numpy as np
 import requests
 import threading
 import time
 import re
+import json
 import database
 import markdown
 import os
 
 app = Flask(__name__)
+sock = Sock(app)
 database.init_db()
 
-camera_url = "http://10.109.199.104:81/stream"
-esp32_base_url = camera_url.rsplit('/', 1)[0]  # "http://10.54.141.104"
+camera_url   = "http://10.109.199.104:81/stream"
+esp32_base_url = camera_url.split("/stream")[0]  # "http://10.109.199.104:81"
 
-# Geteilter Frame zwischen Proxy und OCR-Thread
-ocr_frame = None
-ocr_lock = threading.Lock()
+# ── Shared state ──────────────────────────────────────────────
+ocr_frame      = None
+ocr_lock       = threading.Lock()
+ocr_reader     = None
+scanning       = True   # Ob OCR-Worker aktiv scannt
+last_triggered = {}     # plate -> timestamp (Cooldown)
 
-# OCR Reader (wird im Hintergrund geladen)
-ocr_reader = None
-last_triggered = {}  # plate -> timestamp, Cooldown gegen Mehrfach-Trigger
+# WebSocket-Clients für Live-Push
+ws_clients      = []
+ws_clients_lock = threading.Lock()
 
+# ── OCR ───────────────────────────────────────────────────────
 def init_ocr():
     global ocr_reader
     import easyocr
-    print("[OCR] Initialisiere EasyOCR (kann etwas dauern)...")
+    print("[OCR] Initialisiere EasyOCR...")
     ocr_reader = easyocr.Reader(['en'], gpu=False)
     print("[OCR] EasyOCR bereit!")
+
+def run_ocr_on(img):
+    """Führt OCR aus und gibt das beste Ergebnis zurück (plate, konfidenz) oder None."""
+    if ocr_reader is None or img is None:
+        return None
+    results = ocr_reader.readtext(img)
+    best = None
+    for (_, text, conf) in results:
+        if conf < 0.4:
+            continue
+        plate = re.sub(r'[^A-Z0-9]', '', text.upper())
+        if len(plate) < 4:
+            continue
+        if best is None or conf > best[1]:
+            best = (plate, conf)
+    return best
+
+def broadcast(data: dict):
+    """Sendet ein Erkennungsergebnis an alle verbundenen WS-Clients."""
+    msg = json.dumps(data)
+    with ws_clients_lock:
+        dead = []
+        for client in ws_clients:
+            try:
+                client.send(msg)
+            except Exception:
+                dead.append(client)
+        for client in dead:
+            ws_clients.remove(client)
 
 def ocr_worker():
     while ocr_reader is None:
         time.sleep(0.5)
     print("[OCR] Worker gestartet")
     while True:
+        if not scanning:
+            time.sleep(0.5)
+            continue
+
         with ocr_lock:
             img = ocr_frame.copy() if ocr_frame is not None else None
 
-        if img is not None:
-            try:
-                results = ocr_reader.readtext(img)
-                for (_, text, confidence) in results:
-                    if confidence < 0.5:
-                        continue
-                    # Nur Buchstaben und Zahlen behalten, Großbuchstaben
-                    plate = re.sub(r'[^A-Z0-9]', '', text.upper())
-                    if len(plate) < 4:
-                        continue
-                    now = time.time()
-                    cooldown_ok = plate not in last_triggered or (now - last_triggered[plate]) > 30
-                    if not cooldown_ok:
-                        continue
-                    granted = database.check_plate(plate)
-                    database.log_access(plate, granted)
-                    if granted:
-                        print(f"[OCR] Kennzeichen erkannt: {plate} — ZUGANG GEWÄHRT")
-                        last_triggered[plate] = now
-                        try:
-                            requests.get(f"{esp32_base_url}/toggle_gate", timeout=3)
-                            print("[OCR] Relais ausgelöst (LED an)")
-                        except Exception as e:
-                            print(f"[OCR] Relais-Fehler: {e}")
-                    else:
-                        print(f"[OCR] Kennzeichen erkannt: {plate} — KEIN ZUGANG")
-            except Exception as e:
-                print(f"[OCR] Fehler: {e}")
+        result = run_ocr_on(img)
+        now = time.time()
 
-        time.sleep(2)  # Alle 2 Sekunden ein Frame auswerten
+        if result is None:
+            broadcast({"erkannt": False, "kennzeichen": None, "konfidenz": 0,
+                       "erlaubt": False, "zeitstempel": now * 1000})
+        else:
+            plate, conf = result
+            cooldown_ok = plate not in last_triggered or (now - last_triggered[plate]) > 30
+            granted = database.check_plate(plate) if cooldown_ok else False
 
+            if cooldown_ok:
+                database.log_access(plate, granted, conf)
+                if granted:
+                    last_triggered[plate] = now
+                    print(f"[OCR] {plate} — ZUGANG GEWÄHRT")
+                    try:
+                        requests.get(f"{esp32_base_url}/toggle_gate", timeout=3)
+                    except Exception as e:
+                        print(f"[OCR] Relay-Fehler: {e}")
+                else:
+                    print(f"[OCR] {plate} — KEIN ZUGANG")
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+            broadcast({"erkannt": True, "kennzeichen": plate, "konfidenz": conf,
+                       "erlaubt": granted, "zeitstempel": now * 1000})
 
-@app.route('/manage')
-def manage():
-    plates = database.get_all_plates()
-    return render_template('manage.html', plates=plates)
+        time.sleep(2)
 
-@app.route('/add_plate', methods=['POST'])
-def add_plate_route():
-    plate = request.form.get('plate')
-    if plate:
-        database.add_plate(plate.upper())
-    return redirect(url_for('manage'))
-
-@app.route('/delete_plate', methods=['POST'])
-def delete_plate_route():
-    plate_id = request.form.get('plate_id')
-    if plate_id:
-        database.remove_plate(plate_id)
-    return redirect(url_for('manage'))
-
-@app.route('/toggle_gate', methods=['POST'])
-def toggle_gate():
-    """Manuelles Öffnen per Dashboard-Button."""
+# ── WebSocket ─────────────────────────────────────────────────
+@sock.route('/api/recognition/ws')
+def recognition_ws(ws):
+    with ws_clients_lock:
+        ws_clients.append(ws)
     try:
-        requests.get(f"{esp32_base_url}/toggle_gate", timeout=3)
-        return jsonify({"status": "ok"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        while True:
+            ws.receive(timeout=60)  # Hält die Verbindung offen
+    except Exception:
+        pass
+    finally:
+        with ws_clients_lock:
+            if ws in ws_clients:
+                ws_clients.remove(ws)
 
-@app.route('/docs')
-def list_docs():
-    docs_path = os.path.join(app.root_path, 'docs')
-    files = [f for f in os.listdir(docs_path) if f.endswith('.md')]
-    return render_template('docs_list.html', files=files)
-
-@app.route('/docs/<filename>')
-def view_doc(filename):
-    docs_path = os.path.join(app.root_path, 'docs')
-    filepath = os.path.join(docs_path, filename)
-    if os.path.exists(filepath):
-        with open(filepath, 'r', encoding='utf-8') as f:
-            html_content = markdown.markdown(f.read())
-        return render_template('doc_view.html', content=html_content, title=filename)
-    return "Datei nicht gefunden", 404
-
+# ── Kamera-Routen ─────────────────────────────────────────────
+@app.route('/api/camera/stream')
 @app.route('/video_feed')
 def video_feed():
-    """Liest ESP32-MJPEG-Stream, extrahiert Frames und sendet eigenen MJPEG-Stream."""
     def generate():
         global ocr_frame
         buf = bytes()
@@ -146,7 +150,145 @@ def video_feed():
             print(f"[Proxy] Fehler: {e}")
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+@app.route('/api/camera/status')
+def camera_status():
+    with ocr_lock:
+        has_frame = ocr_frame is not None
+    return jsonify({"online": has_frame})
 
+# ── Platten-Routen ────────────────────────────────────────────
+@app.route('/api/plates/', methods=['GET'])
+def api_get_plates():
+    nur_aktive = request.args.get('nur_aktive', 'false').lower() == 'true'
+    plates = database.get_all_plates(nur_aktive=nur_aktive)
+    return jsonify([{
+        "id":          p["id"],
+        "kennzeichen": p["plate_number"],
+        "beschreibung": p["beschreibung"],
+        "aktiv":       bool(p["aktiv"]),
+        "created_at":  p["created_at"],
+    } for p in plates])
+
+@app.route('/api/plates/', methods=['POST'])
+def api_add_plate():
+    data = request.get_json()
+    kennzeichen  = (data.get("kennzeichen") or "").upper().strip()
+    beschreibung = data.get("beschreibung")
+    if not kennzeichen:
+        return jsonify({"error": "Kennzeichen fehlt"}), 400
+    ok = database.add_plate(kennzeichen, beschreibung)
+    if not ok:
+        return jsonify({"error": "Bereits vorhanden"}), 409
+    return jsonify({"status": "ok"}), 201
+
+@app.route('/api/plates/<int:plate_id>', methods=['PATCH'])
+def api_toggle_plate(plate_id):
+    data = request.get_json()
+    database.set_plate_active(plate_id, data.get("aktiv", True))
+    return jsonify({"status": "ok"})
+
+@app.route('/api/plates/<int:plate_id>', methods=['DELETE'])
+def api_delete_plate(plate_id):
+    database.remove_plate(plate_id)
+    return jsonify({"status": "ok"})
+
+@app.route('/api/plates/log/history')
+def api_log_history():
+    limit = int(request.args.get("limit", 100))
+    logs = database.get_recent_logs(limit)
+    return jsonify([{
+        "kennzeichen": l["plate_number"],
+        "erlaubt":     bool(l["access_granted"]),
+        "erkannt":     l["plate_number"] is not None,
+        "konfidenz":   l["konfidenz"],
+        "zeitstempel": l["timestamp"],
+    } for l in logs])
+
+# ── Erkennungs-Routen ─────────────────────────────────────────
+@app.route('/api/recognition/status')
+def recognition_status():
+    with ws_clients_lock:
+        clients = len(ws_clients)
+    return jsonify({
+        "scanning":  scanning,
+        "clients":   clients,
+        "esp32_url": camera_url,
+        "ocr_ready": ocr_reader is not None,
+    })
+
+@app.route('/api/recognition/scan/start', methods=['POST'])
+def scan_start():
+    global scanning
+    scanning = True
+    return jsonify({"status": "ok"})
+
+@app.route('/api/recognition/scan/stop', methods=['POST'])
+def scan_stop():
+    global scanning
+    scanning = False
+    return jsonify({"status": "ok"})
+
+@app.route('/api/recognition/scan-once', methods=['POST'])
+def scan_once():
+    with ocr_lock:
+        img = ocr_frame.copy() if ocr_frame is not None else None
+    result = run_ocr_on(img)
+    now = time.time()
+    if result is None:
+        return jsonify({"erkannt": False, "kennzeichen": None, "konfidenz": 0,
+                        "erlaubt": False, "zeitstempel": now * 1000})
+    plate, conf = result
+    granted = database.check_plate(plate)
+    return jsonify({"erkannt": True, "kennzeichen": plate, "konfidenz": conf,
+                    "erlaubt": granted, "zeitstempel": now * 1000})
+
+@app.route('/api/recognition/upload', methods=['POST'])
+def upload_recognize():
+    file = request.files.get("file")
+    if not file:
+        return jsonify({"error": "Keine Datei"}), 400
+    img_array = np.frombuffer(file.read(), dtype=np.uint8)
+    img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+    result = run_ocr_on(img)
+    now = time.time()
+    if result is None:
+        return jsonify({"erkannt": False, "kennzeichen": None, "konfidenz": 0,
+                        "erlaubt": False, "zeitstempel": now * 1000})
+    plate, conf = result
+    granted = database.check_plate(plate)
+    return jsonify({"erkannt": True, "kennzeichen": plate, "konfidenz": conf,
+                    "erlaubt": granted, "zeitstempel": now * 1000})
+
+# ── Alte Routen (Kompatibilität) ──────────────────────────────
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/toggle_gate', methods=['POST'])
+def toggle_gate():
+    try:
+        requests.get(f"{esp32_base_url}/toggle_gate", timeout=3)
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/docs')
+def list_docs():
+    docs_path = os.path.join(app.root_path, 'docs')
+    files = [f for f in os.listdir(docs_path) if f.endswith('.md')]
+    return render_template('docs_list.html', files=files)
+
+@app.route('/docs/<filename>')
+def view_doc(filename):
+    docs_path = os.path.join(app.root_path, 'docs')
+    filepath = os.path.join(docs_path, filename)
+    if os.path.exists(filepath):
+        with open(filepath, 'r', encoding='utf-8') as f:
+            html_content = markdown.markdown(f.read())
+        return render_template('doc_view.html', content=html_content, title=filename)
+    return "Datei nicht gefunden", 404
+
+# ── Start ─────────────────────────────────────────────────────
 if __name__ == '__main__':
     if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
         threading.Thread(target=init_ocr, daemon=True).start()

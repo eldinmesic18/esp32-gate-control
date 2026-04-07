@@ -1,123 +1,118 @@
 <!DOCTYPE html>
-<html lang="en">
-
+<html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESP32 CAM Dashboard</title>
-    <!-- Use Tailwind CSS via CDN for rapid prototyping -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-        }
-    </style>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <title>Garage – Kennzeichenerkennung</title>
+    <link rel="stylesheet" href="/static/css/style.css">
 </head>
+<body>
+    <header>
+        <h1>Garage Kennzeichenerkennung</h1>
+        <div class="connection-status" id="connectionStatus">
+            <span class="dot offline"></span>
+            <span id="connectionText">Verbinde...</span>
+        </div>
+    </header>
 
-<body class="bg-slate-900 text-slate-100 min-h-screen">
-    <div class="container mx-auto px-4 py-8">
-        <header class="mb-8 flex justify-between items-center">
-            <div>
-                <h1
-                    class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-indigo-500 bg-clip-text text-transparent">
-                    Smart Gate Control
-                </h1>
-                <p class="text-slate-400 mt-1">Live Feed & Access Management</p>
+    <main>
+        <section class="camera-section">
+            <div class="camera-container">
+                <img id="cameraFeed" alt="Kamerabild">
+                <div class="camera-overlay" id="cameraOverlay">
+                    <span>ESP32 nicht erreichbar</span>
+                </div>
             </div>
-            <div class="flex gap-4">
-                <a href="/docs"
-                    class="bg-slate-800 hover:bg-slate-700 text-blue-400 px-4 py-2 rounded-lg font-medium transition-colors border border-slate-700 flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
-                        <path fill-rule="evenodd"
-                            d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z"
-                            clip-rule="evenodd" />
-                    </svg>
-                    Docs
-                </a>
-                <button
-                    class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-lg shadow-emerald-900/20">
-                    Open Gate
-                </button>
-            </div>
-        </header>
 
-        <main class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <!-- Left Column: Video Feed -->
-            <section class="bg-slate-800 rounded-2xl p-6 shadow-xl border border-slate-700">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-xl font-semibold text-white">Live Camera</h2>
-                    <span
-                        class="px-2 py-1 bg-red-500/10 text-red-400 text-xs rounded-full font-mono border border-red-500/20 animate-pulse">
-                        ● LIVE
-                    </span>
+            <div class="status-panel">
+                <div class="status-light-container">
+                    <div class="status-light" id="statusLight"></div>
+                    <span class="status-label" id="statusLabel">Warte auf Erkennung...</span>
                 </div>
 
-                <div class="aspect-video bg-black rounded-xl overflow-hidden relative group">
-                    <!-- Live MJPEG Stream from the backend -->
-                    <img src="/video_feed" alt="Camera Stream" class="w-full h-full object-cover">
+                <div class="plate-display" id="plateDisplay">
+                    <span class="plate-text" id="plateText">–</span>
+                    <span class="confidence" id="confidenceText"></span>
                 </div>
 
-                <div class="mt-4 flex gap-4 text-sm text-slate-400 font-mono">
-                    <div class="bg-slate-900/50 px-3 py-1.5 rounded">
-                        FPS: <span class="text-blue-400">0</span>
-                    </div>
-                    <div class="bg-slate-900/50 px-3 py-1.5 rounded">
-                        Res: <span class="text-blue-400">800x600</span>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Right Column: Recent Activity & Management -->
-            <div class="space-y-8">
-                <!-- Recent Access Logs -->
-                <section class="bg-slate-800 rounded-2xl p-6 shadow-xl border border-slate-700">
-                    <h2 class="text-xl font-semibold text-white mb-4">Recent Activity</h2>
-                    <div class="space-y-3">
-                        <!-- Example Items -->
-                        <div
-                            class="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg hover:bg-slate-700 transition-colors">
-                            <div class="flex items-center gap-3">
-                                <div class="w-2 h-10 bg-emerald-500 rounded-full"></div>
-                                <div>
-                                    <div class="font-bold text-white tracking-wider">M-XY-1234</div>
-                                    <div class="text-xs text-slate-400">Today, 14:30</div>
-                                </div>
-                            </div>
-                            <div class="text-emerald-400 text-sm font-medium">Granted</div>
-                        </div>
-
-                        <div
-                            class="flex items-center justify-between p-3 bg-slate-700/50 rounded-lg hover:bg-slate-700 transition-colors">
-                            <div class="flex items-center gap-3">
-                                <div class="w-2 h-10 bg-red-500 rounded-full"></div>
-                                <div>
-                                    <div class="font-bold text-white tracking-wider">B-ZZ-9876</div>
-                                    <div class="text-xs text-slate-400">Today, 12:15</div>
-                                </div>
-                            </div>
-                            <div class="text-red-400 text-sm font-medium">Denied</div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Whitelist Management Link -->
-                <section
-                    class="bg-gradient-to-br from-indigo-900/50 to-purple-900/50 rounded-2xl p-6 border border-indigo-500/20 relative overflow-hidden">
-                    <div class="relative z-10">
-                        <h3 class="text-lg font-semibold text-indigo-100 mb-2">Manage Database</h3>
-                        <p class="text-indigo-300 text-sm mb-4">Add or remove authorized license plates from the system.
-                        </p>
-                        <a href="/manage"
-                            class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors inline-block text-center">
-                            Open Management
-                        </a>
-                    </div>
-                </section>
+                <div class="last-update" id="lastUpdate"></div>
             </div>
-        </main>
-    </div>
+        </section>
+
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="whitelist">Whitelist</button>
+            <button class="tab-btn" data-tab="log">Erkennungs-Log</button>
+            <button class="tab-btn" data-tab="settings">Einstellungen</button>
+        </nav>
+
+        <!-- Tab: Whitelist -->
+        <section class="tab-content active" id="tab-whitelist">
+            <div class="card">
+                <h2>Kennzeichen hinzufügen</h2>
+                <form id="addPlateForm" class="add-form">
+                    <input type="text" id="newPlate" placeholder="z.B. M-AB1234" maxlength="15" required>
+                    <input type="text" id="newDescription" placeholder="Beschreibung (optional)" maxlength="100">
+                    <button type="submit" class="btn btn-primary">Hinzufügen</button>
+                </form>
+            </div>
+
+            <div class="card">
+                <h2>Erlaubte Kennzeichen</h2>
+                <div class="filter-bar">
+                    <label>
+                        <input type="checkbox" id="showOnlyActive" checked>
+                        Nur aktive anzeigen
+                    </label>
+                    <span class="plate-count" id="plateCount">0 Einträge</span>
+                </div>
+                <div id="platesList" class="plates-list">
+                    <div class="loading">Lade...</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab: Log -->
+        <section class="tab-content" id="tab-log">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Erkennungs-Verlauf</h2>
+                    <button class="btn btn-secondary" id="refreshLog">Aktualisieren</button>
+                </div>
+                <div id="logList" class="log-list">
+                    <div class="loading">Lade...</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab: Einstellungen -->
+        <section class="tab-content" id="tab-settings">
+            <div class="card">
+                <h2>System-Status</h2>
+                <div id="systemStatus" class="status-grid">
+                    <div class="loading">Lade...</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Scanner</h2>
+                <div class="scanner-controls">
+                    <button class="btn btn-primary" id="startScan">Scan starten</button>
+                    <button class="btn btn-danger" id="stopScan">Scan stoppen</button>
+                    <button class="btn btn-secondary" id="scanOnce">Einmal scannen</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Bild hochladen (Test)</h2>
+                <form id="uploadForm" class="upload-form">
+                    <input type="file" id="uploadFile" accept="image/*" required>
+                    <button type="submit" class="btn btn-primary">Erkennen</button>
+                </form>
+                <div id="uploadResult"></div>
+            </div>
+        </section>
+    </main>
+
+    <script src="/static/js/app.js"></script>
 </body>
-
 </html>
