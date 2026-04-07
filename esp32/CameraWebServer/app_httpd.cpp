@@ -17,7 +17,7 @@ static esp_err_t stream_handler(httpd_req_t *req) {
   uint8_t *_jpg_buf = NULL;
   char *part_buf[64];
 
-  res = httpd_resp_set_type(req, "_multipart/x-mixed-replace; boundary=frame");
+  res = httpd_resp_set_type(req, "multipart/x-mixed-replace; boundary=frame");
   if (res != ESP_OK) {
     return res;
   }

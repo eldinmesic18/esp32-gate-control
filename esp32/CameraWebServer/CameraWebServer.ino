@@ -4,8 +4,8 @@
 // ==========================================
 // KONFIGURATION (Bitte anpassen!)
 // ==========================================
-const char* ssid = "DEIN_WLAN_NAME";
-const char* password = "DEIN_WLAN_PASSWORT";
+const char* ssid = "Galaxy S23 F3C3";
+const char* password = "Eldin123";
 
 // Wähle dein Kameramodell
 // #define CAMERA_MODEL_WROVER_KIT // Has PSRAM
@@ -54,7 +54,7 @@ void setup() {
   config.pin_sscb_scl = SIOC_GPIO_NUM;
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 20000000;
+  config.xclk_freq_hz = 10000000;
   config.pixel_format = PIXFORMAT_JPEG;
   
   // if PSRAM IC present, init with UXGA resolution and higher JPEG quality
@@ -75,6 +75,31 @@ void setup() {
     Serial.printf("Camera init failed with error 0x%x", err);
     return;
   }
+
+  // ===================================================
+  // Sensor-Einstellungen für OV2640 (fixes black image)
+  // ===================================================
+  sensor_t * s = esp_camera_sensor_get();
+  // Auto-Exposure & Auto-Gain aktivieren (kritisch für helles Bild)
+  s->set_exposure_ctrl(s, 1);   // Auto-Exposure EIN
+  s->set_gain_ctrl(s, 1);       // Auto-Gain EIN
+  s->set_awb_gain(s, 1);        // Auto-White-Balance-Gain EIN
+  s->set_whitebal(s, 1);        // White Balance EIN
+  // Bild-Qualität & Helligkeit
+  s->set_brightness(s, 1);      // Helligkeit: -2 bis 2 (0 = Standard)
+  s->set_contrast(s, 0);        // Kontrast: -2 bis 2
+  s->set_saturation(s, 0);      // Sättigung: -2 bis 2
+  s->set_ae_level(s, 0);        // AE-Stufe: -2 bis 2
+  // Linsenkorrektur & Rauschunterdrückung
+  s->set_lenc(s, 1);            // Linsenkorrektur EIN
+  s->set_raw_gma(s, 1);         // Gamma EIN
+  s->set_bpc(s, 0);             // Black Pixel Correction AUS
+  s->set_wpc(s, 1);             // White Pixel Correction EIN
+  s->set_dcw(s, 1);             // Downsize EIN
+  // Auflösung & Qualität für flüssiges Streaming
+  s->set_framesize(s, FRAMESIZE_VGA); // 640x480 (flüssiger als UXGA)
+  s->set_quality(s, 12);         // JPEG-Qualität: 0-63 (niedriger = besser)
+
 
   WiFi.begin(ssid, password);
 

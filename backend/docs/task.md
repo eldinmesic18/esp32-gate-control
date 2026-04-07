@@ -17,6 +17,12 @@
     - [x] Live-View Komponente <!-- id: 10 -->
     - [x] Kennzeichen-Verwaltung (CRUD) <!-- id: 11 -->
     - [x] Styling & UI (Modern/Premium) <!-- id: 12 -->
+- [/] Hardware & Aufbau
+    - [x] Einkaufsliste erstellen <!-- id: 16 -->
+    - [x] Flash-Anleitung & IP-Suche dokumentieren <!-- id: 20 -->
+    - [ ] Hardware bestellen <!-- id: 17 -->
+    - [ ] Prototyp auf Breadboard aufbauen <!-- id: 18 -->
+    - [ ] Gehäusemontage <!-- id: 19 -->
 - [/] Integration & Test
     - [ ] Gesamtsystem-Test <!-- id: 13 -->
     - [x] Dokumentation (Walkthrough) <!-- id: 14 -->
