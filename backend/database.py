@@ -69,13 +69,20 @@ def get_all_plates(nur_aktive=False):
     conn.close()
     return rows
 
+def _normalize(plate: str) -> str:
+    """Entfernt Bindestriche, Leerzeichen und macht Großbuchstaben."""
+    import re
+    return re.sub(r'[^A-Z0-9]', '', plate.upper())
+
 def check_plate(plate_number):
+    norm = _normalize(plate_number)
     conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    c.execute("SELECT * FROM plates WHERE plate_number=? AND aktiv=1", (plate_number,))
-    result = c.fetchone()
+    c.execute("SELECT plate_number FROM plates WHERE aktiv=1")
+    rows = c.fetchall()
     conn.close()
-    return result is not None
+    return any(_normalize(r["plate_number"]) == norm for r in rows)
 
 def log_access(plate_number, granted, konfidenz=None):
     conn = sqlite3.connect(DB_NAME)
