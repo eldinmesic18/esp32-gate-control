@@ -7,7 +7,7 @@ import threading
 # ── Kamera ────────────────────────────────────────────────────────────────────
 
 # Vollständige URL zum MJPEG-Stream des ESP32
-camera_url = "http://10.79.59.104/stream"
+camera_url = "http://10.80.16.104/stream"
 
 # Basis-URL des ESP32 (ohne /stream) — wird für den Relay-Aufruf verwendet
 esp32_base_url = camera_url.split("/stream")[0]
